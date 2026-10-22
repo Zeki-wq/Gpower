@@ -10,6 +10,12 @@ setup(
         "scipy>=1.14.0",
         "numpy>=2.0.0",
     ],
+    extras_require={
+        "test": [
+            "pytest>=8.0.0",
+            "statsmodels>=0.14.0",
+        ]
+    },
     entry_points={
         "console_scripts": [
             "gpower-clone=src.cli:main",
