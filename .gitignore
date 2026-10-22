@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Testing and caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Binaries, Executables, Installers (STRICT: Never commit binaries)
+*.exe
+*.dll
+*.so
+*.dylib
+*.msi
+*.zip
+*.tar.gz
+
+# Ghidra project files (STRICT: Never commit Ghidra databases)
+*.gpr
+*.rep/
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary scratch and logs
+scratch/
+*.log
