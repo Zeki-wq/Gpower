@@ -75,23 +75,25 @@ Her girdi aşağıdaki etiketlerle sınıflandırılmıştır:
 
 ## 3. Matematiksel Formülasyon ve Algoritma Doğrulaması
 
-### 3.1. Formüller
-- **Serbestlik Derecesi ($df$):** `[DOK]`
+> **Metodolojik Not:** Aşağıdaki formüller genel istatistik literatüründen (`[DOK]`) alınmış olup, tek başına tersine mühendislik keşfi olarak iddia edilmemiştir. İkili dosya içindeki `nctcdf`, `nctinv`, `t2g_*` sembolleri ve `PowerTMeans` RTTI yapısı ise Ghidra statik analiziyle doğrulanmış gerçek bulgulardır (`[REA]`).
+
+### 3.1. Literatür Formülleri ([DOK])
+- **Serbestlik Derecesi ($df$):** `[DOK]` (Student, 1908)
   $$df = N_1 + N_2 - 2$$
-- **Noncentrality Parameter ($\delta$):** `[DOK]` & `[REA]`
+- **Noncentrality Parameter ($\delta$):** `[DOK]` (Cohen 1988; Faul et al. 2007)
   $$\delta = d \cdot \sqrt{\frac{N_1 \cdot N_2}{N_1 + N_2}}$$
   Eşit gruplarda ($N_1 = N_2 = N/2$): $\delta = \frac{d}{2} \sqrt{N}$
-- **Kritik t Değeri ($t_{crit}$):** `[DOK]` & `[REA]`
+- **Kritik t Değeri ($t_{crit}$):** `[DOK]`
   - Çift kuyruklu: $t_{crit} = t_{df}^{-1}(1 - \alpha/2)$
   - Tek kuyruklu: $t_{crit} = t_{df}^{-1}(1 - \alpha)$
-- **Gerçekleşen Güç ($1 - \beta$):** `[DOK]` & `[REA]`
+- **Gerçekleşen Güç ($1 - \beta$):** `[DOK]`
   - Çift kuyruklu: $1 - \beta = 1 - F_{df, \delta}(t_{crit}) + F_{df, \delta}(-t_{crit})$
   - Tek kuyruklu: $1 - \beta = 1 - F_{df, \delta}(t_{crit})$
 
-### 3.2. A Priori Örneklem Arama Algoritması
-- **Durum:** `[REA]` & `[DOK]`
+### 3.2. A Priori Örneklem Arama Algoritması ve Tamsayı Kuralı
+- **Durum:** `[DOK]` & `[REA]`
 - G*Power, verilen $d, \alpha, \text{hedef güç}, r = N_2/N_1$ değerleri için $N_2 = \lceil r \cdot N_1 \rceil$ kuralını uygular.
-- Gerçekleşen gücün hedef gücü sağladığı ($\text{power} \ge \text{target\_power}$) en küçük tamsayı $N_1$ aranır.
+- Gerçekleşen gücün hedef gücü sağladığı ($\text{power} \ge \text{target\_power}$) en küçük geçerli tamsayı $N_1$ aranır.
 - Doğrulama: Standart ders kitabı senaryosunda ($d=0.5, \alpha=0.05, 1-\beta=0.80, r=1.0$, çift kuyruk):
   - $N_1 = 64, N_2 = 64, \text{Total } N = 128$
   - $df = 126$
