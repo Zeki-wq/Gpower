@@ -130,3 +130,25 @@ Her girdi aşağıdaki etiketlerle sınıflandırılmıştır:
 - **Geçerlilik Aralığı:** $\delta \ge 10.0$ ve $t_{crit} < \delta - 4\sigma$ koşulu altında sol kuyruk olasılığı $P(T \le -t_{crit}) < 10^{-15}$ mertebesinde olup ihmal edilebilir ($0.0$).
 - **Uygulanan Çözüm:** `src/calculator.py` içinde alt taşma durumunda `math.isnan(cdf_lower)` değeri $0.0$ olarak sınırlandırılmış ve gerçekleşen güç $1.000000$ olarak tam sayısal kararlılıkla elde edilmiştir. Bağımsız `statsmodels` ile $\delta=12.5, 15.0, 20.0$ durumlarında $1.00000000$ çıktısı birebir doğrulanmıştır.
 
+---
+
+## 6. Bonus Aşama: Model Context Protocol (MCP) ve Doğal Dil AI Ajanı
+
+### 6.1. Tek Doğruluk Kaynağı Prensibi (Single Source of Truth)
+- **Durum:** `[REA]`
+- MCP sunucusu (`src/mcp_server.py`) ve Doğal Dil AI Ajanı (`src/agent.py`), bağımsız veya mükerrer bir hesaplama motoru içermez. Tüm matematiksel hesaplamalar ve giriş doğrulamaları `src/calculator.py` üzerinden yürütülür (`compute_a_priori`, `compute_post_hoc`).
+
+### 6.2. MCP Sunucusu ve Araçları
+- **Durum:** `[REA]`
+- `mcp.server.mcpserver.MCPServer` protokolü ile iki araç sunulmaktadır:
+  1. `compute_a_priori_sample_size`: `d`, `alpha`, `target_power`, `ratio`, `tails` parametrelerini alır; `n1`, `n2`, `total_n`, `actual_power`, `critical_t`, `delta`, `df` döndürür.
+  2. `compute_post_hoc_power`: `d`, `alpha`, `n1`, `n2`, `tails` parametrelerini alır; `actual_power`, `critical_t`, `delta`, `df`, `total_n` döndürür.
+- Geçersiz parametrelerde (örn. $d \le 0$, $\alpha \ge 1.0$) `ValidationError` fırlatılır ve istemciye anlaşılır hata mesajı iletilir.
+
+### 6.3. Doğal Dil AI Ajanı ve Klinik Feragatname
+- **Durum:** `[REA]`
+- Ajan, Türkçe/İngilizce serbest metin girdilerinden etki büyüklüğü ($d$), hedef güç, anlamlılık düzeyi ($\alpha$), örneklem sayıları ($N_1, N_2$), oran ve kuyruk seçimini regex ve semantik kurallarla çıkarır.
+- Eksik parametreler (örn. A priori için $d$) tespit edildiğinde asla uydurma yapılmaz; kullanıcıya açıklayıcı bir netleştirme sorusu yöneltilir.
+- Kullanılan varsayımlar (örn. "Çift kuyruklu (tails=2)", "Eşit grup oranı (ratio=1.0)") yanıtta açıkça raporlanır.
+- **Klinik Feragatname Politikası:** Ajanın ürettiği hiçbir çıktı klinik/tıbbi tavsiye veya garanti olarak sunulamaz. Her yanıtın sonuna zorunlu yasal/klinik feragatname (`CLINICAL_DISCLAIMER`) eklenir.
+

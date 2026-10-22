@@ -17,6 +17,9 @@ Bu belge, oturum boyunca gerçekleştirilen araç çağrılarını, deneme sayı
 | **Aşama 5: Uygulama Geliştirme (Clean-Room)** | 4 | 4 | 0 | `src/calculator.py`, `src/cli.py`, `setup.py`, `gpower-clone.bat` oluşturulması ve kurulması |
 | **Aşama 6: Test Otomasyonu (Pytest)** | 4 | 3 | 1 (Başlangıç test uyumsuzlukları) | 24 birim, kabul, CLI ve 540 vektör regresyon testinin tamamlanması (100% başarı) |
 | **Aşama 7: Teslimat & Dokümantasyon** | 12 | 12 | 0 | SPEC, LEDGER, HALLUCINATIONS, AGENT_COST, README, LICENSE, .gitignore hazırlanması |
+| **Aşama 8: Bonus MCP Sunucusu** | 3 | 3 | 0 | `src/mcp_server.py` FastMCP/MCPServer araçları, stdio transport, testler |
+| **Aşama 9: Bonus Doğal Dil AI Ajanı** | 4 | 4 | 0 | `src/agent.py` regex doğal dil ayrıştırma, eksik parametre sorgulama, feragatname, CLI |
+| **Aşama 10: Bonus Entegrasyon & Test** | 3 | 3 | 0 | 45 testin (21 yeni test) %100 geçmesi, bat betikleri, paket güncellemesi |
 
 ---
 
@@ -25,9 +28,9 @@ Bu belge, oturum boyunca gerçekleştirilen araç çağrılarını, deneme sayı
 *Not: Gerçek token tüketimleri API yanıt başlıklarından tahmin edilmiştir (Tahmin).*
 
 - **Kullanılan Model:** Gemini 3.8 Flash (Medium)
-- **Tahmini Toplam Giriş Tokenı (Prompt):** ~150,000 token
-- **Tahmini Toplam Çıkış Tokenı (Completion):** ~19,000 token
+- **Tahmini Toplam Giriş Tokenı (Prompt):** ~195,000 token
+- **Tahmini Toplam Çıkış Tokenı (Completion):** ~25,000 token
 - **Birim Maliyet Referansı (Standart Flash tarifesi):**
   - Giriş: $0.075 / 1M token
   - Çıkış: $0.30 / 1M token
-- **Tahmini Toplam Maliyet:** ~**$0.017 - $0.020 USD** (~2 sent)
+- **Tahmini Toplam Maliyet:** ~**$0.022 - $0.025 USD** (~2.5 sent)
