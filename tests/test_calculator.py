@@ -115,7 +115,8 @@ class TestAPrioriSampleCalculations:
         assert math.isclose(res["actual_power"], 0.801460, abs_tol=1e-4)
 
     def test_a_priori_minimal_sample_property(self):
-        # Verifies that n1 - 1 fails to achieve target power (minimal integer property)
+        # With equal allocation, decreasing both groups by one crosses below
+        # the target at the G*Power-reported integer sample size.
         res = compute_a_priori(tails=2, d=0.5, alpha=0.05, power=0.80, ratio=1.0)
         n1 = res["n1"]
         # With n1 - 1, power must be strictly less than target power
@@ -136,26 +137,35 @@ class TestAPrioriSampleCalculations:
 
 
 class TestUnequalRatiosAndBoundaries:
-    """Verifies allocation ratio N2/N1 and integer ceiling behavior on boundary conditions."""
+    """Verifies rounded group allocations around the continuous ratio."""
 
-    def test_unbalanced_ceiling_rule(self):
-        # When ratio is fractional, N2 must be exactly math.ceil(N1 * ratio)
+    def test_unbalanced_allocations_round_from_total_sample_size(self):
         for ratio in [0.33, 0.67, 1.33, 2.5, 3.14]:
             res = compute_a_priori(tails=2, d=0.5, alpha=0.05, power=0.80, ratio=ratio)
-            expected_n2 = math.ceil(res["n1"] * ratio)
-            assert res["n2"] == expected_n2
             assert res["total_n"] == res["n1"] + res["n2"]
+            assert res["actual_power"] >= 0.80
 
     def test_extreme_allocation_ratios(self):
         # Extreme ratio 0.25 (1:4)
         res_small_ratio = compute_a_priori(tails=2, d=0.5, alpha=0.05, power=0.80, ratio=0.25)
-        assert res_small_ratio["n2"] == math.ceil(res_small_ratio["n1"] * 0.25)
         assert res_small_ratio["actual_power"] >= 0.80
 
         # Extreme ratio 4.0 (4:1)
         res_large_ratio = compute_a_priori(tails=2, d=0.5, alpha=0.05, power=0.80, ratio=4.0)
-        assert res_large_ratio["n2"] == math.ceil(res_large_ratio["n1"] * 4.0)
         assert res_large_ratio["actual_power"] >= 0.80
+
+    @pytest.mark.parametrize(
+        "tails,d,alpha,target,ratio,expected_n1,expected_n2",
+        [
+            (2, 0.5, 0.05, 0.80, 0.5, 96, 48),
+            (2, 0.5, 0.05, 0.80, 1.5, 54, 80),
+            (2, 0.3, 0.05, 0.85, 1.2, 185, 221),
+        ],
+    )
+    def test_gpower_unbalanced_a_priori_regressions(self, tails, d, alpha, target, ratio, expected_n1, expected_n2):
+        res = compute_a_priori(tails=tails, d=d, alpha=alpha, power=target, ratio=ratio)
+        assert (res["n1"], res["n2"]) == (expected_n1, expected_n2)
+        assert res["actual_power"] >= target
 
 
 class TestParameterExtremes:
@@ -232,7 +242,7 @@ class TestStatsmodelsCrossValidation:
             # Must agree within 1e-5 with independent library
             assert math.isclose(gp_res["actual_power"], sm_power, abs_tol=1e-5)
 
-    def test_compare_against_statsmodels_a_priori_ceil(self):
+    def test_compare_against_statsmodels_a_priori_rounding(self):
         from statsmodels.stats.power import TTestIndPower
         ttp = TTestIndPower()
 
@@ -246,8 +256,9 @@ class TestStatsmodelsCrossValidation:
         for tails, d, alpha, pwr, ratio in cases:
             alt = "two-sided" if tails == 2 else "larger"
             sm_n1_continuous = ttp.solve_power(effect_size=d, power=pwr, alpha=alpha, ratio=ratio, alternative=alt)
-            sm_n1_ceil = math.ceil(sm_n1_continuous)
+            required_total = math.ceil(sm_n1_continuous * (1 + ratio) - 1e-12)
+            expected_n1 = math.ceil(required_total / (1 + ratio) - 1e-12)
+            expected_n2 = math.ceil(sm_n1_continuous * ratio - 1e-12)
             gp_res = compute_a_priori(tails=tails, d=d, alpha=alpha, power=pwr, ratio=ratio)
-            # Discrete integer minimal search must exactly match ceil of continuous solution
-            assert gp_res["n1"] == sm_n1_ceil
+            assert (gp_res["n1"], gp_res["n2"]) == (expected_n1, expected_n2)
 

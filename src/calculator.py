@@ -135,8 +135,13 @@ def compute_a_priori(
 ) -> Dict[str, Any]:
     """
     Computes required sample size for two independent groups t-test given target power.
-    Finds the minimal integer N1 such that achieved power >= target power,
-    with N2 = ceil(N1 * ratio).
+
+    G*Power's a-priori procedure solves for the continuous total sample size at
+    the requested allocation ratio, rounds that total upward, derives N1 from
+    that rounded total, and rounds N2 upward from the continuous allocation.
+    This differs from searching all integer N1 values with
+    N2=ceil(N1*ratio): that search can find a smaller feasible pair than
+    G*Power reports for an uneven ratio.
     """
     validate_parameters(mode="a-priori", tails=tails, d=d, alpha=alpha, power=power, ratio=ratio)
 
@@ -146,12 +151,53 @@ def compute_a_priori(
     # Initial approximation
     approx_n1 = max(2, math.ceil(((z_alpha + z_beta) ** 2 * (1.0 + 1.0 / ratio)) / (d ** 2)))
     
-    # Safe search window starting below approximation
-    start_n1 = max(2, approx_n1 - 50)
-    max_search_n1 = approx_n1 + 500
+    def power_for(n1: float, n2: float) -> float:
+        df = n1 + n2 - 2.0
+        delta = d * math.sqrt((n1 * n2) / (n1 + n2))
+        critical_t = stats.t.ppf(1.0 - alpha / tails, df)
+        upper = stats.nct.cdf(critical_t, df, delta)
+        if math.isnan(upper):
+            upper = 0.0 if delta > 0 else 1.0
+        if tails == 2:
+            lower = stats.nct.cdf(-critical_t, df, delta)
+            if math.isnan(lower):
+                lower = 0.0
+            return float(max(0.0, min(1.0, 1.0 - upper + lower)))
+        return float(max(0.0, min(1.0, 1.0 - upper)))
 
-    for candidate_n1 in range(start_n1, max_search_n1):
-        candidate_n2 = max(2, math.ceil(candidate_n1 * ratio))
+    def continuous_power(n1: float) -> float:
+        return power_for(n1, n1 * ratio)
+
+    # Find the continuous N1 at the requested ratio. The normal approximation
+    # is a useful starting point, but the final root uses the noncentral t.
+    low_n1 = 2.0
+    high_n1 = float(max(approx_n1, 3))
+    max_search_n1 = high_n1
+    while continuous_power(high_n1) < power:
+        high_n1 *= 2.0
+        max_search_n1 = high_n1
+        if high_n1 > 10_000_000:
+            raise RuntimeError(
+                f"Hedef güç ({power}) makul arama sınırında ({max_search_n1}) sağlanamadı."
+            )
+
+    for _ in range(100):
+        mid_n1 = (low_n1 + high_n1) / 2.0
+        if continuous_power(mid_n1) >= power:
+            high_n1 = mid_n1
+        else:
+            low_n1 = mid_n1
+    continuous_total_n = high_n1 * (1.0 + ratio)
+
+    # G*Power rounds the total sample size up, derives N1 from that total, and
+    # rounds N2 upward from the continuous allocation at the target ratio.
+    total_for_allocation = math.ceil(continuous_total_n - 1e-12)
+    candidate_n1 = max(2, math.ceil(total_for_allocation / (1.0 + ratio) - 1e-12))
+    candidate_n2 = max(2, math.ceil(high_n1 * ratio - 1e-12))
+
+    # The integer allocation can move slightly from the continuous ratio.
+    # Preserve G*Power's threshold guarantee if that rounding lands below it.
+    while True:
         res = compute_post_hoc(
             tails=tails,
             d=d,
@@ -159,7 +205,7 @@ def compute_a_priori(
             n1=candidate_n1,
             n2=candidate_n2,
         )
-        if res["actual_power"] >= power:
+        if power_for(candidate_n1, candidate_n2) >= power:
             return {
                 "status": "success",
                 "test": "t2-indep",
@@ -177,5 +223,6 @@ def compute_a_priori(
                 "critical_t": res["critical_t"],
                 "actual_power": res["actual_power"],
             }
-
-    raise RuntimeError(f"Hedef güç ({power}) makul arama sınırında ({max_search_n1}) sağlanamadı.")
+        total_for_allocation += 1
+        candidate_n1 = max(2, math.ceil(total_for_allocation / (1.0 + ratio) - 1e-12))
+        candidate_n2 = max(2, math.ceil(high_n1 * ratio - 1e-12))
