@@ -22,6 +22,8 @@ Gpower/
 │   └── test_oracle_validation.py      # Oracle veri seti regresyon testleri
 ├── oracle/                             # Referans test verileri
 │   ├── README.md                      # Veri doğrulama raporu
+│   ├── MANIFEST.md                    # 40 vektörün detaylı karşılaştırma ve minimal N tablosu
+│   ├── manifest.csv                   # Makine tarafından okunabilir doğrulama manifesti
 │   ├── vectors_a_priori.csv           # 20 adet A priori test vektörü
 │   ├── vectors_post_hoc.csv           # 20 adet Post hoc test vektörü
 │   ├── vectors_comparison_500.csv     # 500 adet karşılaştırma vektörü
