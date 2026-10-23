@@ -2,8 +2,8 @@ from setuptools import setup, find_packages
 
 setup(
     name="gpower-clone",
-    version="1.1.0",
-    description="Clean-room re-implementation of G*Power two-sample t-test calculator, MCP server, and AI Agent",
+    version="1.3.0",
+    description="Clean-room G*Power power-analysis engine, CLI, UI, MCP server, and AI agent",
     author="Zeki",
     packages=find_packages(),
     install_requires=[

@@ -1,96 +1,69 @@
-"""
-Tests for the CLI interface (src/cli.py).
-"""
-
 import json
-from io import StringIO
-import pytest
+
 from src.cli import main
 
 
-class TestCLIInvocations:
-    """Verifies CLI argument handling, exit codes, and JSON outputs."""
+def parse_stdout(capsys):
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert len(captured.out.splitlines()) == 1
+    return json.loads(captured.out)
 
-    def test_cli_a_priori_success(self, monkeypatch, capsys):
-        args = [
-            "--test", "t2-indep",
-            "--mode", "a-priori",
-            "--tails", "2",
-            "--d", "0.5",
-            "--alpha", "0.05",
-            "--power", "0.80",
-            "--ratio", "1.0",
-        ]
-        exit_code = main(args)
-        assert exit_code == 0
-        captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data["status"] == "success"
-        assert data["n1"] == 64
-        assert data["n2"] == 64
-        assert data["total_n"] == 128
-        assert data["df"] == 126
-        assert data["actual_power"] >= 0.80
 
-    def test_cli_post_hoc_success(self, capsys):
-        args = [
-            "--test", "t2-indep",
-            "--mode", "post-hoc",
-            "--tails", "2",
-            "--d", "0.5",
-            "--alpha", "0.05",
-            "--n1", "50",
-            "--n2", "50",
-        ]
-        exit_code = main(args)
-        assert exit_code == 0
-        captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data["status"] == "success"
-        assert data["df"] == 98
-        assert data["delta"] == 2.5
-        assert data["critical_t"] == 1.984467
+def test_cli_a_priori_success_and_contract_fields(capsys):
+    code = main(["--test", "t2-indep", "--mode", "a-priori", "--tails", "1", "--d", "0.5",
+                 "--alpha", "0.05", "--power", "0.95", "--ratio", "1"])
+    assert code == 0
+    result = parse_stdout(capsys)
+    assert result["n1"] == result["n2"] == 88
+    assert result["n_total"] == 176
+    assert type(result["df"]) is int
 
-    def test_cli_text_format(self, capsys):
-        args = [
-            "--mode", "post-hoc",
-            "--tails", "2",
-            "--d", "0.5",
-            "--alpha", "0.05",
-            "--n1", "50",
-            "--n2", "50",
-            "--format", "text",
-        ]
-        exit_code = main(args)
-        assert exit_code == 0
-        captured = capsys.readouterr()
-        assert "G*POWER CLONE - HESAPLAMA SONUÇLARI" in captured.out
-        assert "Gerçekleşen Güç:" in captured.out
 
-    def test_cli_validation_error_negative_d(self, capsys):
-        args = [
-            "--mode", "a-priori",
-            "--tails", "2",
-            "--d", "-0.5",
-            "--alpha", "0.05",
-            "--power", "0.80",
-        ]
-        exit_code = main(args)
-        assert exit_code == 1
-        captured = capsys.readouterr()
-        data = json.loads(captured.err)
-        assert data["status"] == "error"
-        assert data["error_type"] == "ValidationError"
+def test_cli_compact_post_hoc_json(capsys):
+    assert main(["--test", "t2-indep", "--mode", "post-hoc", "--tails", "2", "--d", "0.5",
+                 "--alpha", "0.05", "--n1", "50", "--n2", "50"]) == 0
+    result = parse_stdout(capsys)
+    assert result["df"] == 98 and result["power"] > 0.69
 
-    def test_cli_missing_required_power_in_a_priori(self, capsys):
-        args = [
-            "--mode", "a-priori",
-            "--d", "0.5",
-            "--alpha", "0.05",
-        ]
-        exit_code = main(args)
-        assert exit_code == 1
-        captured = capsys.readouterr()
-        data = json.loads(captured.err)
-        assert data["status"] == "error"
-        assert "zorunludur" in data["message"]
+
+def test_cli_version_matches_contract_schema(capsys):
+    assert main(["--version"]) == 0
+    result = parse_stdout(capsys)
+    assert result["contract_version"] == "1.0.0"
+    assert result["name"] == "Zeki"
+    assert result["engine"].startswith("Python ")
+    assert set(result) == {"contract_version", "name", "engine"}
+
+
+def test_cli_missing_required_field_uses_contract_error(capsys):
+    assert main(["--test", "t2-indep", "--mode", "a-priori", "--tails", "1", "--d", "0.5"]) == 2
+    result = parse_stdout(capsys)
+    assert result["code"] == "MISSING_PARAM" and result["field"] == "alpha"
+
+
+def test_cli_unknown_or_irrelevant_param_uses_contract_error(capsys):
+    assert main(["--test", "t2-indep", "--mode", "post-hoc", "--tails", "1", "--d", "0.5",
+                 "--alpha", "0.05", "--n1", "30", "--n2", "30", "--power", "0.8"]) == 2
+    result = parse_stdout(capsys)
+    assert result["code"] == "UNKNOWN_PARAM" and result["field"] == "power"
+
+
+def test_cli_unknown_family_is_unsupported(capsys):
+    assert main(["--test", "not-a-test", "--mode", "post-hoc"]) == 2
+    result = parse_stdout(capsys)
+    assert result["code"] == "UNSUPPORTED" and result["field"] == "test"
+
+
+def test_cli_out_of_range_is_exit_two(capsys):
+    assert main(["--test", "t2-indep", "--mode", "a-priori", "--tails", "2", "--d", "-0.5",
+                 "--alpha", "0.05", "--power", "0.8", "--ratio", "1"]) == 2
+    result = parse_stdout(capsys)
+    assert result["code"] == "OUT_OF_RANGE" and result["field"] == "d"
+
+
+def test_cli_integer_decimal_rejected_as_invalid(capsys):
+    assert main(["--test", "t-paired", "--mode", "post-hoc", "--dz", "0.5", "--alpha", "0.05",
+                 "--n_total", "20.5"]) == 2
+    result = parse_stdout(capsys)
+    assert result["code"] == "INVALID_VALUE"

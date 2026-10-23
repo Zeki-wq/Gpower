@@ -1,87 +1,87 @@
-"""
-Tests for Natural Language AI Agent (src/agent.py).
-"""
+import asyncio
+import json
 
-from src.agent import GPowerAgent, CLINICAL_DISCLAIMER
+from src.agent import GPowerAgent
 
 
-class TestGPowerAgent:
-    """Verifies natural language parsing, tool execution, explanations, and disclaimers."""
+def test_agent_without_llm_credentials_does_not_fabricate_or_calculate(tmp_path, monkeypatch):
+    monkeypatch.delenv("GPOWER_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("GPOWER_LLM_MODEL", raising=False)
+    log_path = tmp_path / "agent_calls.jsonl"
+    response = GPowerAgent(log_path=log_path).process_query("Kurgusal çalışma için d=0.5, güç=0.8")
 
-    def setup_method(self):
-        self.agent = GPowerAgent()
+    assert "GPOWER_LLM_API_KEY" in response
+    assert "MCP çağrısı yapılmadı" in response
+    record = json.loads(log_path.read_text(encoding="utf-8"))
+    assert set(record) == {"ts", "question", "tool_input", "tool_output", "tokens_in", "tokens_out"}
+    assert record["tool_input"] is None
+    assert record["tool_output"]["status"] == "not_run"
+    assert record["tokens_in"] is None and record["tokens_out"] is None
 
-    def test_complete_a_priori_query(self):
-        query = "İlaç ve plasebo karşılaştırmasında d=0.5, yüzde 80 güç ve 0.05 alfa için iki kuyruklu kaç denek gerekir?"
-        response = self.agent.process_query(query)
 
-        # Must report key fields
-        assert "64" in response  # N1 and N2
-        assert "128" in response  # Total N
-        assert "0.801460" in response or "0.80" in response  # Power
-        assert "126" in response  # df
-        # Must include clinical disclaimer
-        assert "FERAGATNAME" in response
-        assert "klinik/tıbbi bir tavsiye" in response.lower()
+def test_agent_calls_real_mcp_stdio_server():
+    agent = GPowerAgent()
+    result = asyncio.run(agent._call_mcp({
+        "test": "t2-indep", "mode": "a-priori", "tails": 2,
+        "d": 0.5, "alpha": 0.05, "power": 0.8, "ratio": 1.0,
+    }))
+    assert result["status"] == "success"
+    assert result["n1"] == 64 and result["n2"] == 64
 
-    def test_complete_post_hoc_query(self):
-        query = "İki grupta 50'şer hasta var, d=0.5 ve alfa=0.05 altında gerçekleşen güç nedir?"
-        response = self.agent.process_query(query)
 
-        assert "50" in response
-        assert "100" in response
-        assert "98" in response  # df
-        assert "69.69" in response or "0.696893" in response
-        assert "FERAGATNAME" in response
+def test_agent_mcp_returns_contract_error_for_unknown_family():
+    result = asyncio.run(GPowerAgent()._call_mcp({
+        "test": "not-a-test", "mode": "post-hoc",
+    }))
+    assert result["code"] == "UNSUPPORTED"
+    assert result["field"] == "test"
+    assert "error" in result
 
-    def test_missing_parameters_triggers_clarification(self):
-        # Query missing effect size d and power
-        query = "Yeni bir ilaç çalışması planlıyorum, kaç hasta almalıyım?"
-        response = self.agent.process_query(query)
 
-        # Must ask for missing parameters rather than fabricating them
-        assert "Etki Büyüklüğü" in response
-        assert "Hedef Güç" in response
-        assert "tahmin edilmemektedir" in response or "eksik parametreler" in response
-        assert "FERAGATNAME" in response
+def test_agent_rejects_empty_or_oversized_questions(tmp_path):
+    agent = GPowerAgent(log_path=tmp_path / "agent_calls.jsonl")
+    assert "Lütfen" in agent.process_query("  ")
+    assert "4000 karakter" in agent.process_query("x" * 4001)
+    assert not (tmp_path / "agent_calls.jsonl").exists()
 
-    def test_qualitative_effect_size_mapping(self):
-        query = "Orta etki büyüklüğü ile %90 güç ve çift kuyruk için örneklem büyüklüğü nedir?"
-        response = self.agent.process_query(query)
 
-        # 'orta etki' must map to d = 0.5
-        assert "0.5" in response
-        assert "86" in response  # N1 = 86 for power = 0.90, d = 0.5
-        assert "172" in response  # Total N = 172
-        assert "FERAGATNAME" in response
+def test_agent_blocks_obvious_personal_data_before_llm_and_redacts_log(tmp_path, monkeypatch):
+    agent = GPowerAgent(log_path=tmp_path / "agent_calls.jsonl")
+    monkeypatch.setattr(agent, "_extract_with_llm", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("LLM must not be called")))
+    private_question = "My patient has ID 12345 and can be reached at zeki@example.com"
+    answer = agent.process_query(private_question)
+    assert "kişisel" in answer.lower()
+    record = json.loads((tmp_path / "agent_calls.jsonl").read_text(encoding="utf-8"))
+    assert record["question"] == "[REDACTED: personal data request]"
+    assert "zeki@example.com" not in json.dumps(record)
+    assert record["tool_output"]["status"] == "refused"
 
-    def test_explicit_assumptions_reported(self):
-        query = "d=0.8 ve %80 güç için örneklem hesabı yap."
-        response = self.agent.process_query(query)
 
-        # Defaulted assumptions must be explicitly reported
-        assert "Kullanılan Varsayımlar" in response
-        assert "0.05" in response  # alpha assumed 0.05
-        assert "iki kuyruklu" in response or "çift kuyruk" in response  # tails assumed 2
-        assert "26" in response  # N1 = 26 for d = 0.8
-        assert "52" in response  # Total N = 52
-        assert "FERAGATNAME" in response
+def test_agent_detects_phone_number_pattern():
+    assert GPowerAgent._contains_obvious_personal_data("İletişim numarası 0532 123 45 67")
 
-    def test_post_hoc_drug_and_placebo_named_groups(self):
-        query = "İlaç grubunda 50 hasta, plasebo grubunda 50 hasta var. Etki büyüklüğü 0.5 ve alfa 0.05 ise gücümüz nedir?"
-        response = self.agent.process_query(query)
 
-        assert "50" in response
-        assert "100" in response
-        assert "69.69" in response or "0.696893" in response
-        assert "FERAGATNAME" in response
+def test_agent_carries_clarification_into_follow_up_then_calls_real_mcp(tmp_path, monkeypatch):
+    agent = GPowerAgent(log_path=tmp_path / "agent_calls.jsonl")
+    calls = []
+    answers = [
+        ({"tool_input": None, "clarification": "Hedef gücü belirtir misiniz?"}, 12, 8),
+        ({"tool_input": {"test": "t2-indep", "mode": "a-priori", "tails": 1,
+                         "d": 0.5, "alpha": 0.05, "power": 0.95, "ratio": 1.0},
+          "clarification": None}, 18, 10),
+    ]
 
-    def test_unknown_query_mode_clarification(self):
-        query = "Merhaba, bu çalışma için bana yardımcı olur musun?"
-        response = self.agent.process_query(query)
+    def parse(question, context=None):
+        calls.append((question, context))
+        return answers.pop(0)
 
-        assert "Hangi analiz türünü gerçekleştirmek istediğinizi tam anlayamadım" in response
-        assert "A Priori" in response
-        assert "Post Hoc" in response
-        assert "FERAGATNAME" in response
-
+    monkeypatch.setattr(agent, "_extract_with_llm", parse)
+    first = agent.process_query("Kurgusal iki grup için örneklem sayısı")
+    assert "Hedef gücü belirtir misiniz?" in first
+    second = agent.process_query("0.95")
+    assert "N1=88 ve N2=88" in second
+    assert calls[0] == ("Kurgusal iki grup için örneklem sayısı", None)
+    assert calls[1] == ("0.95", ("Kurgusal iki grup için örneklem sayısı", "Hedef gücü belirtir misiniz?"))
+    logs = [json.loads(line) for line in (tmp_path / "agent_calls.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(logs) == 2
+    assert logs[1]["tool_output"]["n1"] == logs[1]["tool_output"]["n2"] == 88

@@ -1,109 +1,50 @@
-"""
-G*Power Clone - Model Context Protocol (MCP) Server
-Exposes G*Power statistical calculation tools via MCP protocol.
-Uses src/calculator.py as the SINGLE source of truth.
-"""
+"""Contract-v1 MCP stdio server exposing only the canonical power_analysis tool."""
 
-from typing import Dict, Any, Optional
+from typing import Any, Optional
+
 from mcp.server.mcpserver import MCPServer
-from src.calculator import (
-    compute_a_priori,
-    compute_post_hoc,
-    ValidationError,
-)
 
-# Initialize MCP Server instance
+from src.calculator import ValidationError, compute_power_analysis
+
 app = MCPServer("gpower-clone-mcp")
 
 
 @app.tool()
-def compute_a_priori_sample_size(
-    d: float,
-    power: float,
-    alpha: float = 0.05,
-    tails: int = 2,
-    ratio: float = 1.0,
-) -> Dict[str, Any]:
-    """
-    Computes required sample size (A priori analysis) for two independent groups t-test.
-    
-    Args:
-        d: Cohen's d effect size (> 0, e.g. 0.2 for small, 0.5 for medium, 0.8 for large).
-        power: Target statistical power (1 - beta), e.g. 0.80 or 0.90.
-        alpha: Significance level (Type I error prob, default: 0.05).
-        tails: Number of tails, 1 (one-tailed) or 2 (two-tailed, default: 2).
-        ratio: Allocation ratio N2/N1 (default: 1.0 for equal groups).
-        
-    Returns:
-        Dictionary containing N1, N2, Total_N, df, delta, critical_t, and actual_power.
-    """
+def power_analysis(
+    test: str,
+    mode: str,
+    tails: Optional[int] = None,
+    d: Optional[float] = None,
+    dz: Optional[float] = None,
+    f: Optional[float] = None,
+    w: Optional[float] = None,
+    f2: Optional[float] = None,
+    alpha: Optional[float] = None,
+    power: Optional[float] = None,
+    ratio: Optional[float] = None,
+    n1: Optional[int] = None,
+    n2: Optional[int] = None,
+    n_total: Optional[int] = None,
+    groups: Optional[int] = None,
+    df: Optional[int] = None,
+    predictors: Optional[int] = None,
+    beta_alpha_ratio: Optional[float] = None,
+) -> dict[str, Any]:
+    """Run the shared calculation dispatcher and return contract-shaped JSON."""
+    parameters = {
+        name: value for name, value in locals().items()
+        if name not in {"test", "mode"} and value is not None
+    }
     try:
-        return compute_a_priori(
-            tails=tails,
-            d=d,
-            alpha=alpha,
-            power=power,
-            ratio=ratio,
-        )
-    except ValidationError as ve:
-        return {
-            "status": "error",
-            "error_type": "ValidationError",
-            "message": str(ve),
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "error_type": type(e).__name__,
-            "message": str(e),
-        }
-
-
-@app.tool()
-def compute_post_hoc_power(
-    d: float,
-    n1: int,
-    n2: int,
-    alpha: float = 0.05,
-    tails: int = 2,
-) -> Dict[str, Any]:
-    """
-    Computes achieved statistical power (Post hoc analysis) for two independent groups t-test.
-    
-    Args:
-        d: Cohen's d effect size (> 0).
-        n1: Sample size of group 1 (integer >= 2).
-        n2: Sample size of group 2 (integer >= 2).
-        alpha: Significance level (default: 0.05).
-        tails: Number of tails, 1 (one-tailed) or 2 (two-tailed, default: 2).
-        
-    Returns:
-        Dictionary containing df, delta, critical_t, and achieved actual_power.
-    """
-    try:
-        return compute_post_hoc(
-            tails=tails,
-            d=d,
-            alpha=alpha,
-            n1=n1,
-            n2=n2,
-        )
-    except ValidationError as ve:
-        return {
-            "status": "error",
-            "error_type": "ValidationError",
-            "message": str(ve),
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "error_type": type(e).__name__,
-            "message": str(e),
-        }
+        return compute_power_analysis(test, mode, **parameters)
+    except ValidationError as error:
+        return {"error": str(error), "code": error.code, "field": error.field}
+    except Exception as error:
+        return {"error": str(error), "code": "INTERNAL", "field": None}
 
 
 def run_stdio() -> None:
-    """Runs the MCP server over standard input/output (stdio transport)."""
+    """Run the MCP server over stdio transport."""
     app.run(transport="stdio")
 
 

@@ -7,6 +7,7 @@ import math
 from src.calculator import (
     compute_a_priori,
     compute_post_hoc,
+    compute_power_analysis,
     validate_parameters,
     ValidationError,
 )
@@ -24,6 +25,16 @@ class TestInputValidation:
             compute_post_hoc(tails=3, d=0.5, alpha=0.05, n1=30, n2=30)
         with pytest.raises(ValidationError, match="Geçersiz kuyruk"):
             compute_post_hoc(tails=0, d=0.5, alpha=0.05, n1=30, n2=30)
+
+    def test_boolean_is_not_accepted_as_tails(self):
+        with pytest.raises(ValidationError, match="Geçersiz kuyruk"):
+            compute_post_hoc(tails=True, d=0.5, alpha=0.05, n1=30, n2=30)
+
+    def test_boolean_is_not_accepted_as_numeric_or_integer_parameters(self):
+        with pytest.raises(ValidationError, match="geçerli bir sayı"):
+            compute_post_hoc(tails=2, d=True, alpha=0.05, n1=30, n2=30)
+        with pytest.raises(ValidationError, match="en az 2"):
+            compute_post_hoc(tails=2, d=0.5, alpha=0.05, n1=True, n2=30)
 
     def test_invalid_effect_size(self):
         with pytest.raises(ValidationError, match="pozitif olmalıdır"):
@@ -261,4 +272,44 @@ class TestStatsmodelsCrossValidation:
             expected_n2 = math.ceil(sm_n1_continuous * ratio - 1e-12)
             gp_res = compute_a_priori(tails=tails, d=d, alpha=alpha, power=pwr, ratio=ratio)
             assert (gp_res["n1"], gp_res["n2"]) == (expected_n1, expected_n2)
+
+
+class TestAdditionalAnalysisModes:
+    def test_sensitivity_solves_effect_at_target_power(self):
+        result = compute_power_analysis(
+            "t2-indep", "sensitivity", tails=2, alpha=0.05,
+            power=0.80, n1=64, n2=64,
+        )
+        assert result["status"] == "success"
+        assert result["mode"] == "sensitivity"
+        assert result["n1"] == 64 and result["n2"] == 64
+        achieved = compute_post_hoc(2, result["d"], 0.05, 64, 64)["actual_power"]
+        assert abs(achieved - 0.80) < 1e-5
+
+    def test_criterion_solves_alpha_at_target_power(self):
+        result = compute_power_analysis(
+            "t2-indep", "criterion", tails=2, d=0.5,
+            power=0.80, n1=64, n2=64,
+        )
+        assert result["status"] == "success"
+        assert 0.0 < result["alpha"] < 0.05
+        assert abs(result["actual_power"] - 0.80) < 1e-5
+
+    def test_compromise_solves_requested_beta_alpha_ratio(self):
+        result = compute_power_analysis(
+            "t2-indep", "compromise", tails=2, d=0.5,
+            n1=64, n2=64, beta_alpha_ratio=1.0,
+        )
+        assert result["status"] == "success"
+        assert abs(result["beta"] / result["alpha"] - 1.0) < 2e-5
+        assert abs(result["actual_power"] - (1.0 - result["beta"])) < 2e-5
+
+    def test_unsupported_family_is_explained_not_faked(self):
+        with pytest.raises(ValidationError, match="Bilinmeyen test ailesi") as error:
+            compute_power_analysis("not-a-test", "post-hoc")
+        assert error.value.code == "UNSUPPORTED"
+
+    def test_irrelevant_parameters_are_rejected(self):
+        with pytest.raises(ValidationError, match="ilgisiz parametre"):
+            compute_power_analysis("t2-indep", "post-hoc", d=0.5, n1=30, n2=30, power=0.8)
 
